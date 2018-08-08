@@ -1,160 +1,227 @@
-
+from itertools import combinations
 puzzle = []
 possible_vals = []
 
-# Soduku Class
+
+# Soduku Classes
+class cell:
+    def __init__(self):
+        self.solved = False
+        self.possible_vals = set(range(1, 9 + 1))
+        self.value = 0
+        self.x = None
+        self.y = None
+        self.updated = False
+
+    def report(self):
+        if not self.solved:
+            print("Cell ", self.x, self.y, "Possible Values:", self.possible_vals)
+        else:
+            print("Cell ", self.x, self.y, "Val:", self.value)
+
+
+class sdk_element:
+    def __init__(self):
+        self.remaining_values = set(range(1, 9 + 1))
+        self.cells = []
+
+    def filter(self):
+        for c in self.cells:
+            if c.solved:
+                for nc in self.cells:
+                    if nc != c:
+                        nc.possible_vals.discard(c.value)
+
+
+class Box(sdk_element):
+    def __init__(self):
+        pass
 
 
 class puzzle:
 
-    def __init__(self):
-        self.data = []
+    def __init__(self, size):
+        self.matrix = [[0 for i in range(9)] for j in range(9)]
+        self.boxes = []
+        self.columns = []
+        self.rows = []
+        # Parameters
         self.size = None
         self.val_table = None
         self.state = []
+        self.initStructures(size)
+
+    def initStructures(self, size):
+        #Populate Matrix
+        for i in range(9):
+            for j in range(9):
+                c = cell()
+                c.x = i
+                c.y = j
+                self.matrix[c.x][c.y] = c
+
+        # Populate Rows
+        for i in range(9):
+            l = sdk_element()
+            for j in range(9):
+                l.cells.append(self.matrix[i][j])
+            self.rows.append(l)
+
+        # Populate Columns
+        for i in range(9):
+            l = sdk_element()
+            for j in range(9):
+                l.cells.append(self.matrix[j][i])
+            self.columns.append(l)
+
+        # Populate Boxes
+        for box_i in range(3):
+            for box_j in range(3):
+                # Fetch cells
+                l = sdk_element()
+                for i in range(3):
+                    for j in range(3):
+                        l.cells.append(self.matrix[box_i * 3 + i][box_j * 3 + j])
+                self.boxes.append(l)
 
     def setupPuzzle(self, path):
+        self.size = 9
         # GetData
         f = open(path)
-        for line in f.readlines():
-            entry = [int(i) for i in line.rstrip('\n').split(',')]
-            self.data.append(entry)
+        lines = f.readlines()
+        for line_id in range(len(lines)):
+            line = lines[line_id]
+            values = map(int, line.rstrip('\n').split(','))
+            for i in range(len(values)):
+                value = int(values[i])
+                if (value):
+                    c = self.matrix[line_id][i]
+                    c.possible_vals = {value}
+                    self.solve_cell(c)
         f.close()
 
-        self.size = len(self.data)
-        self.val_table = set(range(self.size + 1))
-        self.val_table.discard(0)
+    def resetCellStatus(self):
+        for i in range(self.size):
+            for j in range(self.size):
+                self.matrix[i][j].updated = False
 
     def calcProgress(self):
         prog = 0
-        for line in self.data:
-            for val in line:
-                if val:
+        for i in range(9):
+            for j in range(9):
+                if self.matrix[i][j].solved:
                     prog += 1
-        return self.size ** 2 - prog
+        return 9 ** 2 - prog
 
-    def readPuzzle(self):
-        self.boxes = []
-        self.lines = []
-        self.columns = []
-        self.possible_vals = []
+    def filter_solved(self):
+        for b in self.boxes:
+            b.filter()
 
-        # Getting Data
+        for r in self.rows:
+            r.filter()
 
-        # Get Boxes
-        for i in range(self.size // 3):
-            line = []
-            for j in range(self.size // 3):
-                box = set()
-                box_x = 3 * i
-                box_y = 3 * j
-                for k in range(3):
-                    for l in range(3):
-                        box.add(self.data[box_x + k][box_y + l])
-                box.discard(0)
-                line.append(box)
-            self.boxes.append(line)
+        for c in self.columns:
+            c.filter()
 
-        # Get Lines
-        for i in range(self.size):
-            line = set(self.data[i])
-            line.discard(0)
-            self.lines.append(line)
+    def reportPossibleValues(self):
+        for r in self.rows:
+            for c in r.cells:
+                c.report()
 
-        # Get Columns
-        # Also init the possible vals
-        for i in range(self.size):
-            column = set()
-            emptyset = []
-            for j in range(self.size):
-                column.add(self.data[j][i])
-                emptyset.append(set())
-            column.discard(0)
-            self.columns.append(column)
-            self.possible_vals.append(emptyset)
+    def reportRemainingValues(self):
+        for r_id in range(self.size):
+            print("Row", r_id, self.rows[r_id].remaining_values)
 
-        for i in range(self.size):  # line index
-            for j in range(self.size):  # column index
-                val = self.data[i][j]
-                if not val:
-                    box_x = (i // 3)
-                    box_y = (j // 3)
-                    box = self.boxes[box_x][box_y]
-                    line = self.lines[i]
-                    col = self.columns[j]
-                    step0 = line.union(col).union(box)
-                    self.possible_vals[i][j] = self.val_table.difference(step0)
-                    # step0 = step0.difference(self.val_table)
-                    # print i, j, self.val_table.difference(step0)
+        for c_id in range(self.size):
+            print("Col", c_id, self.columns[c_id].remaining_values)
 
-    def hiddenSingle(self):
-        tempstate = []
-        # Iterate in the boxes
-        for i in range(self.size // 3):
-            for j in range(self.size // 3):
-                # Check for uniqueness in the box
-                ids = [(), (), (), (), (), (), (), (), ()]
-                for k in range(9):
-                    state = 0
-                    foundIdx = None
-                    for m in range(self.size // 3):
-                        for n in range(self.size // 3):
-                            candidateIdx = 3 * i + m
-                            candidateIdy = 3 * j + n
-                            candidateVal = self.data[candidateIdx][candidateIdy]
-                            candidate = self.possible_vals[candidateIdx][candidateIdy]
-                            # print candidate
-                            if (not candidateVal):
-                                if ((k + 1) in candidate) and state == 0:
-                                    foundIdx = (candidateIdx, candidateIdy)
-                                    state = 1
-                                elif ((k + 1) in candidate) and state == 1:
-                                    state = 2
-                            if (state == 2):
-                                break
-                        if (state == 2):
-                            break
-                    if state == 1:
-                        ids[k] = foundIdx
+        for b_id in range(self.size):
+            print("Box", b_id, self.boxes[b_id].remaining_values)
 
-                tempstate.append(ids)
+    def hiddenX(self, x):
+        structs = [self.rows, self.columns, self.boxes]
+        # Apply on Every struct iteratively
+        for s in structs:
+            for b in s:
+                if len(b.remaining_values) < x:
+                    continue
+                for comb in combinations(b.remaining_values, x):
+                    l = []
+                    for c in b.cells:
+                        if c.solved:
+                            continue
+                        if (c.possible_vals == set(comb)) or (c.possible_vals < set(comb)):
+                            l.append(c)
 
-        # Update Data
-        for box in tempstate:
-            for j in range(len(box)):
-                if box[j]:
-                    # Commit Data
-                    self.data[box[j][0]][box[j][1]] = j + 1
+                    if (len(l) == x):
+                        '''
+                        print("found hidden ", x, comb)
+                        for j in l:
+                            print(j.x, j.y, j.possible_vals)
+                        '''
+                        # Remove vals from all other cells
+                        for c in b.cells:
+                            if c not in l:
+                                for val in comb:
+                                    c.possible_vals.discard(val)
 
-        self.state = tempstate
+                        # Set only one val for the found cells
+                        for j in l:
+                            j.possible_vals = j.possible_vals & set(comb)
+
+    def solve_cell(self, c):
+        c.value = c.possible_vals.pop()
+        c.solved = True
+
+        # Fix remaining values for row, box, column
+        self.rows[c.x].remaining_values.discard(c.value)
+        self.columns[c.y].remaining_values.discard(c.value)
+        self.boxes[(c.x // 3) * 3 + c.y // 3].remaining_values.discard(c.value)
+        # Filter After solved
+        self.filter_solved()
+
+    def solve_algo(self):
+        '''
+        for i in range(3, 0, -1):
+            # Rest Cell Status
+            print "HIDDEN" + str(i)
+            self.hiddenX(i)
+        '''
+        self.hiddenX(3)
+        self.hiddenX(2)
+        self.hiddenX(1)
+        self.nakedSingle()
 
     def nakedSingle(self):
         for i in range(self.size):
             for j in range(self.size):
-                if (not self.data[i][j] and len(self.possible_vals[i][j]) == 1):
-                    # Update the Data
-                    self.data[i][j] = self.possible_vals[i][j].pop()
-                    # Sudoku Functions
+                c = self.matrix[i][j]
+                if len(c.possible_vals) == 1:
+                    print("Solving Cell", c.x, c.y)
+                    self.solve_cell(c)
+
+    def _print(self):
+        for i in range(self.size):
+            print([c.value for c in self.rows[i].cells])
 
 
-sdk = puzzle()
-sdk.setupPuzzle("easy0.sdk")
+def main():
+    sdk = puzzle(9)
+    sdk.setupPuzzle("cover.sdk")
+    stepCounter = 0
+    while(sdk.calcProgress() > 0):
+        print("Step", stepCounter)
+        sdk.solve_algo()
+        # sdk.reportPossibleValues()
+        # sdk.reportRemainingValues()
+        # sdk._print()
+        stepCounter += 1
+        if (stepCounter > 50):
+            break
 
-print sdk.size
-progress = sdk.calcProgress()
-step = 0
-while progress:
-    sdk.readPuzzle()
-    sdk.nakedSingle()
-    sdk.readPuzzle()
-    sdk.hiddenSingle()
-    # sdk.readPuzzle()
-    # print('State ' + str(step))
-    # for i in sdk.state:
-    #    print i
-    print('Stage' + str(step))
-    for i in sdk.data:
-        print i
-    progress = sdk.calcProgress()
-    step += 1
-    print 'Progress: ', sdk.calcProgress()
+    print("Final Solution. Steps: ", stepCounter)
+    sdk._print()
+
+
+if __name__ == "__main__":
+    main()
